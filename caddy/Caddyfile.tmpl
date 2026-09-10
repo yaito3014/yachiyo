@@ -1,0 +1,7 @@
+# Rendered by setup.sh — edit the .tmpl, not the output.
+{{ID_HOST}} {
+    # TLS edge for Authentik. Authentik serves plain HTTP on :9000; Caddy
+    # terminates TLS (Let's Encrypt) and forwards, setting X-Forwarded-* so
+    # Authentik builds correct issuer URLs.
+    reverse_proxy server:9000
+}

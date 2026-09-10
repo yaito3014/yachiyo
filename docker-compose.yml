@@ -1,0 +1,106 @@
+# yachiyo: Authentik (self-hosted IdP) + Caddy (TLS edge), on its own VPS.
+# Replaces Dex as the identity provider: self-service registration + email
+# verification + password reset + social login (GitHub), all OIDC.
+# Run ./setup.sh (after copying .env.example to .env) to generate secrets and
+# render the Caddyfile, then: docker compose up -d
+#
+# Authentik listens on :9000 (HTTP); Caddy terminates TLS for ID_HOST and
+# proxies to it. The server/worker share one env block (x-authentik-env). We do
+# NOT mount the Docker socket: only OIDC is used, so no proxy/LDAP outposts.
+
+x-authentik-env: &authentik-env
+  AUTHENTIK_SECRET_KEY: ${AUTHENTIK_SECRET_KEY}
+  AUTHENTIK_REDIS__HOST: redis
+  AUTHENTIK_POSTGRESQL__HOST: postgresql
+  AUTHENTIK_POSTGRESQL__USER: ${PG_USER:-authentik}
+  AUTHENTIK_POSTGRESQL__NAME: ${PG_DB:-authentik}
+  AUTHENTIK_POSTGRESQL__PASSWORD: ${PG_PASS}
+  # SMTP for verification/reset emails (Resend). Empty until configured in .env;
+  # email features just won't send until then.
+  AUTHENTIK_EMAIL__HOST: ${AUTHENTIK_EMAIL__HOST:-}
+  AUTHENTIK_EMAIL__PORT: ${AUTHENTIK_EMAIL__PORT:-587}
+  AUTHENTIK_EMAIL__USERNAME: ${AUTHENTIK_EMAIL__USERNAME:-}
+  AUTHENTIK_EMAIL__PASSWORD: ${AUTHENTIK_EMAIL__PASSWORD:-}
+  AUTHENTIK_EMAIL__USE_TLS: ${AUTHENTIK_EMAIL__USE_TLS:-true}
+  AUTHENTIK_EMAIL__FROM: ${AUTHENTIK_EMAIL__FROM:-}
+
+services:
+  postgresql:
+    image: docker.io/library/postgres:16-alpine
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -d $${POSTGRES_DB} -U $${POSTGRES_USER}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+    volumes:
+      - database:/var/lib/postgresql/data
+    environment:
+      POSTGRES_PASSWORD: ${PG_PASS}
+      POSTGRES_USER: ${PG_USER:-authentik}
+      POSTGRES_DB: ${PG_DB:-authentik}
+
+  redis:
+    image: docker.io/library/redis:7-alpine
+    command: --save 60 1 --loglevel warning
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "redis-cli ping | grep PONG"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+      start_period: 10s
+    volumes:
+      - redis:/data
+
+  server:
+    image: ${AUTHENTIK_IMAGE:-ghcr.io/goauthentik/server}:${AUTHENTIK_TAG}
+    restart: unless-stopped
+    command: server
+    environment:
+      <<: *authentik-env
+    volumes:
+      - media:/media
+      - custom-templates:/templates
+    depends_on:
+      postgresql:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  worker:
+    image: ${AUTHENTIK_IMAGE:-ghcr.io/goauthentik/server}:${AUTHENTIK_TAG}
+    restart: unless-stopped
+    command: worker
+    environment:
+      <<: *authentik-env
+    volumes:
+      - media:/media
+      - custom-templates:/templates
+    depends_on:
+      postgresql:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  caddy:
+    image: caddy:2
+    restart: unless-stopped
+    ports:
+      - "80:80"      # ACME HTTP-01 + redirect
+      - "443:443"
+    volumes:
+      - ./caddy/Caddyfile:/etc/caddy/Caddyfile:ro   # rendered by setup.sh
+      - caddy-data:/data        # certificates live here — do not delete
+      - caddy-config:/config
+    depends_on:
+      - server
+
+volumes:
+  database:
+  redis:
+  media:
+  custom-templates:
+  caddy-data:
+  caddy-config:
