@@ -20,7 +20,7 @@ Docker socket is not mounted.
 ## Quick start
 
     cp .env.example .env
-    $EDITOR .env          # ID_HOST, AUTHENTIK_TAG (and SMTP once ready)
+    $EDITOR .env          # ID_HOST (and SMTP once ready)
     ./setup.sh            # generates secrets, renders caddy/Caddyfile
     docker compose up -d  # first boot runs DB migrations — give it a minute
 
@@ -45,9 +45,55 @@ Ensure the `email` and `email_verified` claims are released (kaguya-auth keys
 identity on the verified email). Enable a registration flow with an email-
 verification stage and add GitHub as a federation source.
 
+## Automated updates
+
+Updates are pull-based: nothing outside this VPS can push to it.
+
+- **Images:** [Renovate](https://github.com/apps/renovate) opens PRs that bump
+  the image tags and digests pinned in `docker-compose.yml` (see `renovate.json`).
+  Patch, minor and digest bumps merge automatically once CI passes. Major bumps,
+  and Headscale/Authentik feature releases, wait for you and are marked
+  `[manual-deploy]`.
+- **Deploy:** a nightly `yachiyo-update` timer runs `ops/update.sh`. It
+  fast-forwards to `origin/main`, pulls the images, backs up (`ops/stack.sh`),
+  restarts, and health-checks. If the checks fail it rolls back to the previous
+  commit and does not retry that commit. It does not deploy commits marked
+  `[manual-deploy]`, or commits that change `*.tmpl`, `.env.example` or
+  `setup.sh`; it sends a reminder each night instead.
+- **OS:** unattended security upgrades, with a reboot at 05:40 if one is
+  needed. Docker is held back, because upgrading the engine restarts every
+  container.
+
+Setup, once per VPS: install the Renovate GitHub app on this repo, add
+`UPDATE_NOTIFY_URL` to `.env` (optional; an [ntfy](https://ntfy.sh) topic URL
+works), then:
+
+    sudo ops/install.sh               # timer at 04:00 + unattended-upgrades
+    systemctl list-timers yachiyo-update  # next run
+    journalctl -u yachiyo-update          # past runs
+
+For a `[manual-deploy]` change: read the upstream notes, do any manual steps,
+then run `ops/update.sh --force`. For Authentik, read the release's upgrade
+notes first.
+
+A change to `*.tmpl`, `.env.example` or `setup.sh` is always deployed by hand,
+because `update.sh` never re-renders configs: `git pull`, `./setup.sh`, then
+`docker compose pull && docker compose up -d`.
+
+Backups go to `/var/backups/yachiyo/<time>-<previous commit>/` (newest 5 kept;
+local only, so copy them off the host yourself). Rollback never restores data.
+If a one-way migration ran and the old version cannot start, restore by hand
+from that directory:
+
+    docker compose stop server worker
+    docker compose exec -T postgresql sh -c \
+        'pg_restore --clean --if-exists -U "$POSTGRES_USER" -d "$POSTGRES_DB"' < authentik.pgdump
+    docker compose up -d
+
 ## Notes
 
-- Pin `AUTHENTIK_TAG` to a specific release; review the upgrade notes before bumping.
+- The Authentik release is pinned in `docker-compose.yml` (both `server` and
+  `worker`). Renovate proposes bumps; review the upgrade notes before merging one.
 - `AUTHENTIK_SECRET_KEY` and `PG_PASS` are generated once into `.env`; back them
   up (losing the secret key invalidates sessions/tokens). The Postgres volume
   holds all users and config — include it in backups.

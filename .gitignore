@@ -1,3 +1,7 @@
 .env
 # rendered from *.tmpl by setup.sh
 caddy/Caddyfile
+
+# ops/update.sh runtime state
+.update-failed
+.update.lock

@@ -1,0 +1,18 @@
+# Gate for Renovate automerge: a PR merges (and deploys that night) only if
+# this passes.
+name: validate
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Compose file is valid
+        run: cp .env.example .env && docker compose config --quiet
+      - name: Shell scripts parse
+        run: for f in setup.sh ops/*.sh; do sh -n "$f"; done
