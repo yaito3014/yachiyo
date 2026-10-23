@@ -23,6 +23,16 @@ for v in ID_HOST; do
     [ -n "$val" ] || { echo "error: $v is not set in .env" >&2; exit 1; }
 done
 
+# Optional: space-separated IPs/CIDRs whose X-Forwarded-* headers Authentik
+# should trust. Empty means private_ranges, which no internet client is in, so
+# nothing outside this host is trusted.
+ID_TRUSTED_PROXIES=${ID_TRUSTED_PROXIES:-private_ranges}
+case "$ID_TRUSTED_PROXIES" in
+    *[!0-9A-Za-z.:/_\ ]*)
+        echo "error: ID_TRUSTED_PROXIES must be space-separated IPs/CIDRs" >&2; exit 1 ;;
+esac
+export ID_TRUSTED_PROXIES
+
 # Generate a persistent secret into .env if empty. Uses '|' as the sed delimiter
 # since base64 secrets contain '/' and '+' but never '|'.
 gen_secret() {
@@ -45,7 +55,7 @@ python3 - caddy/Caddyfile.tmpl caddy/Caddyfile <<'PYEOF'
 import os, sys
 tmpl, out = sys.argv[1], sys.argv[2]
 text = open(tmpl).read()
-for k in ["ID_HOST"]:
+for k in ["ID_HOST", "ID_TRUSTED_PROXIES"]:
     text = text.replace("{{%s}}" % k, os.environ.get(k, ""))
 if "{{" in text:
     sys.exit(f"error: unrendered placeholder remains in {out}")

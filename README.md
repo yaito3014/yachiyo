@@ -6,8 +6,10 @@ web), adding self-service registration, email verification, password reset, and
 social login (GitHub) — things Dex does not do.
 
 Authentik runs as server + worker + PostgreSQL + Redis; Caddy terminates TLS for
-`ID_HOST` and proxies to it. Only OIDC is used (no proxy/LDAP outposts), so the
-Docker socket is not mounted.
+`ID_HOST` and proxies to it. Apps log in over OIDC. Sites that need a login
+but don't speak OIDC (iroha's `live` site) use forward auth against the
+**embedded** outpost, which runs inside the server, so the Docker socket is not
+mounted.
 
 ## Requirements
 
@@ -44,6 +46,21 @@ Each application's issuer is `https://<ID_HOST>/application/o/<app-slug>/`.
 Ensure the `email` and `email_verified` claims are released (kaguya-auth keys
 identity on the verified email). Enable a registration flow with an email-
 verification stage and add GitHub as a federation source.
+
+## Forward auth (embedded outpost)
+
+A site on another host can require an Authentik login through that host's
+Caddy, using `forward_auth https://<ID_HOST>` and
+`uri /outpost.goauthentik.io/auth/caddy` (iroha's `live` does this). For that:
+
+- In Authentik, create a Proxy provider in forward-auth (single application)
+  mode for the site's host, plus an application for it, and bind it to the
+  embedded outpost.
+- Put the other host's public IP in `ID_TRUSTED_PROXIES` in `.env` (e.g.
+  `203.0.113.10/32`; space-separate several), then run `./setup.sh` and
+  `docker compose exec -w /etc/caddy caddy caddy reload`. Without this, this
+  Caddy replaces the `X-Forwarded-Host/Proto` headers that host sends, and the
+  outpost cannot tell which application the request is for.
 
 ## Automated updates
 
