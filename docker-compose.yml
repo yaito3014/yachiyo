@@ -55,7 +55,7 @@ services:
       - redis:/data
 
   server:
-    image: ${AUTHENTIK_IMAGE:-ghcr.io/goauthentik/server}:${AUTHENTIK_TAG}
+    image: ghcr.io/goauthentik/server:2026.8.2   # Renovate PRs bump this; see README
     restart: unless-stopped
     command: server
     environment:
@@ -70,7 +70,7 @@ services:
         condition: service_healthy
 
   worker:
-    image: ${AUTHENTIK_IMAGE:-ghcr.io/goauthentik/server}:${AUTHENTIK_TAG}
+    image: ghcr.io/goauthentik/server:2026.8.2   # Renovate PRs bump this; see README
     restart: unless-stopped
     command: worker
     environment:

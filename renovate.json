@@ -1,0 +1,42 @@
+{
+  "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+  "extends": ["config:recommended", "docker:pinDigests"],
+  "packageRules": [
+    {
+      "description": "Low-risk image updates merge on green CI; the VPS deploys them that night",
+      "matchDatasources": ["docker"],
+      "matchUpdateTypes": ["minor", "patch", "digest", "pin", "pinDigest"],
+      "automerge": true
+    },
+    {
+      "description": "Major image bumps (e.g. Postgres data format) need a human: review, merge, then ops/update.sh --force",
+      "matchDatasources": ["docker"],
+      "matchUpdateTypes": ["major"],
+      "automerge": false,
+      "commitMessageSuffix": "[manual-deploy]"
+    },
+    {
+      "description": "Headscale: config schema and DB migrations change between 0.x releases",
+      "matchPackageNames": ["headscale/headscale"],
+      "matchUpdateTypes": ["minor", "major"],
+      "automerge": false,
+      "commitMessageSuffix": "[manual-deploy]"
+    },
+    {
+      "description": "Authentik: each calendar release (2026.8 -> 2026.10) has upgrade notes and one-way migrations",
+      "matchPackageNames": ["ghcr.io/goauthentik/server"],
+      "matchUpdateTypes": ["minor", "major"],
+      "automerge": false,
+      "commitMessageSuffix": "[manual-deploy]"
+    }
+  ],
+  "customManagers": [
+    {
+      "customType": "regex",
+      "description": "Backup helper image pinned in ops/update.sh",
+      "managerFilePatterns": ["/^ops/update\\.sh$/"],
+      "matchStrings": ["BACKUP_IMAGE=(?<depName>[a-z0-9./-]+):(?<currentValue>[^@\\s]+)(?:@(?<currentDigest>sha256:[a-f0-9]+))?"],
+      "datasourceTemplate": "docker"
+    }
+  ]
+}
