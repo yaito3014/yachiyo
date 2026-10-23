@@ -57,9 +57,9 @@ Updates are pull-based: nothing outside this VPS can push to it.
 - **Deploy:** a nightly `yachiyo-update` timer runs `ops/update.sh`. It
   fast-forwards to `origin/main`, pulls the images, backs up (`ops/stack.sh`),
   restarts, and health-checks. If the checks fail it rolls back to the previous
-  commit and does not retry that commit. It skips commits marked
-  `[manual-deploy]` and commits that change `*.tmpl`, `.env.example` or
-  `setup.sh`, and sends a reminder each night instead.
+  commit and does not retry that commit. It does not deploy commits marked
+  `[manual-deploy]`, or commits that change `*.tmpl`, `.env.example` or
+  `setup.sh`; it sends a reminder each night instead.
 - **OS:** unattended security upgrades, with a reboot at 05:40 if one is
   needed. Docker is held back, because upgrading the engine restarts every
   container.
@@ -73,7 +73,12 @@ works), then:
     journalctl -u yachiyo-update          # past runs
 
 For a `[manual-deploy]` change: read the upstream notes, do any manual steps,
-then run `ops/update.sh --force`. For Authentik, read the release's upgrade notes first.
+then run `ops/update.sh --force`. For Authentik, read the release's upgrade
+notes first.
+
+A change to `*.tmpl`, `.env.example` or `setup.sh` is always deployed by hand,
+because `update.sh` never re-renders configs: `git pull`, `./setup.sh`, then
+`docker compose pull && docker compose up -d`.
 
 Backups go to `/var/backups/yachiyo/<time>-<previous commit>/` (newest 5 kept;
 local only, so copy them off the host yourself). Rollback never restores data.

@@ -61,7 +61,8 @@ APT::Periodic::Update-Package-Lists "1";
 APT::Periodic::Unattended-Upgrade "1";
 EOF
     # Distro defaults already limit upgrades to security origins. Docker is held
-    # back explicitly: upgrading the engine restarts every container.
+    # back explicitly (Docker's own packages and the distro's): upgrading the
+    # engine restarts every container.
     cat > /etc/apt/apt.conf.d/52vps-auto-update <<EOF
 // Written by $repo/ops/install.sh
 Unattended-Upgrade::Automatic-Reboot "true";
@@ -72,6 +73,9 @@ Unattended-Upgrade::Package-Blacklist {
     "containerd.io";
     "docker-compose-plugin";
     "docker-buildx-plugin";
+    "docker.io";
+    "containerd";
+    "runc";
 };
 EOF
     echo "enabled unattended security upgrades (reboot window $REBOOT_TIME)"

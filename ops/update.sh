@@ -4,8 +4,8 @@
 # <stack>-update systemd timer (see ops/install.sh); safe to run by hand.
 #
 #   ops/update.sh           deploy new commits if they are safe to auto-deploy
-#   ops/update.sh --force   also deploy commits marked [manual-deploy] or that
-#                           change setup inputs (after doing the manual steps)
+#   ops/update.sh --force   also deploy commits marked [manual-deploy] (after
+#                           doing the manual steps the release needs)
 #
 # Identical in every stack repo. Stack-specific parts (what to back up, how to
 # tell the stack is healthy) live in ops/stack.sh. Optional UPDATE_* settings
@@ -34,7 +34,7 @@ while IFS= read -r line || [ -n "$line" ]; do
 done < .env
 
 # Pinned so the backup helper never pulls a moving tag; Renovate keeps it current.
-BACKUP_IMAGE=busybox:1.37
+BACKUP_IMAGE=busybox:1.37@sha256:bdf57e528e45e4433820e045b29b4597825a1c9e38353532d90a01445013f82e
 
 log() { echo "[${STACK:-update}] $*"; }
 
@@ -88,30 +88,27 @@ if ! git merge-base --is-ancestor "$head" "$target"; then
     exit 1
 fi
 if [ "$force" = 0 ] && [ -f "$failed_file" ] && [ "$(cat "$failed_file")" = "$target" ]; then
-    log "$to failed health checks before; waiting for a newer commit or --force"
+    log "$to failed to deploy before; waiting for a newer commit or --force"
     exit 0
 fi
 
-# Gate: some changes need a human on the box. Renovate marks risky image bumps
-# [manual-deploy]; template/env/setup changes mean configs must be re-rendered
-# (and, for iroha, re-merged), which this script deliberately never does.
-if [ "$force" = 0 ]; then
-    reasons=
-    if git log --format=%B "$head..$target" | grep -qF '[manual-deploy]'; then
-        reasons="a commit is marked [manual-deploy]"
-    fi
-    changed=$(git diff --name-only "$head" "$target" -- '*.tmpl' .env.example setup.sh)
-    if [ -n "$changed" ]; then
-        reasons="${reasons:+$reasons; }setup inputs changed: $(echo $changed)"
-    fi
-    if [ -n "$reasons" ]; then
-        notify "manual deploy pending" "$from..$to not auto-deployed: $reasons. Do the manual steps, then run ops/update.sh --force."
-        exit 0
-    fi
+# Gates: some changes need a human on the box. Template/env/setup changes mean
+# configs must be re-rendered (for iroha, re-merged), which this script never
+# does, so those are deployed by hand even with --force. Renovate marks risky
+# image bumps [manual-deploy]; --force deploys those once you are ready.
+changed=$(git diff --name-only "$head" "$target" -- '*.tmpl' .env.example setup.sh)
+if [ -n "$changed" ]; then
+    notify "manual deploy pending" "$from..$to changes setup inputs ($(echo $changed)); deploy by hand: git pull, ./setup.sh, then docker compose pull && docker compose up -d. See README."
+    exit 0
+fi
+if [ "$force" = 0 ] && git log --format=%B "$head..$target" | grep -qF '[manual-deploy]'; then
+    notify "manual deploy pending" "$from..$to has a commit marked [manual-deploy]. Do the manual steps, then run ops/update.sh --force."
+    exit 0
 fi
 
 log "deploying $from..$to"
 git merge --ff-only --quiet "$target"
+. ./ops/stack.sh    # the target's hooks: its backup set and health check
 
 # Pull before touching anything: a missing image (e.g. CI still building) costs
 # no downtime, and the next run retries.
@@ -129,7 +126,7 @@ if ! (
     stack_backup "$backup_dir"
 ); then
     git reset --hard --quiet "$head"
-    docker compose up -d    # stack_backup may have stopped services
+    docker compose up -d || true    # stack_backup may have stopped services
     notify "update failed" "backup to $backup_dir failed; stayed on $from"
     exit 1
 fi
@@ -159,8 +156,7 @@ wait_healthy() {
     return 1
 }
 
-docker compose up -d
-if wait_healthy; then
+if docker compose up -d && wait_healthy; then
     rm -f "$failed_file"
     docker image prune -f >/dev/null || true
     notify "updated" "$from..$to deployed; backup in $backup_dir"
@@ -168,14 +164,14 @@ if wait_healthy; then
 fi
 
 echo "$target" > "$failed_file"
-log "$to unhealthy; state and logs follow, then rollback"
+log "$to failed to start or is unhealthy; state and logs follow, then rollback"
 docker compose ps -a || true
 docker compose logs --tail 50 || true
 
 git reset --hard --quiet "$head"
-docker compose up -d
-if wait_healthy; then
-    notify "update rolled back" "$to failed health checks; back on $from. See: journalctl -u $STACK-update"
+. ./ops/stack.sh
+if docker compose up -d && wait_healthy; then
+    notify "update rolled back" "$to failed to start or failed health checks; back on $from. See: journalctl -u $STACK-update"
 else
     notify "UPDATE FAILED, ROLLBACK UNHEALTHY" "$to failed and $from did not recover (a one-way migration may have run). Restore from $backup_dir; see README."
 fi

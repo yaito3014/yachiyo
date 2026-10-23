@@ -26,7 +26,7 @@ x-authentik-env: &authentik-env
 
 services:
   postgresql:
-    image: docker.io/library/postgres:16-alpine
+    image: docker.io/library/postgres:16-alpine@sha256:f4610795587492cd4fb887c2dc3de301b813278bb6f616992061141b5f15ac36
     restart: unless-stopped
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -d $${POSTGRES_DB} -U $${POSTGRES_USER}"]
@@ -42,7 +42,7 @@ services:
       POSTGRES_DB: ${PG_DB:-authentik}
 
   redis:
-    image: docker.io/library/redis:7-alpine
+    image: docker.io/library/redis:7-alpine@sha256:57e4255cc971b1c8d6f8a6ca283ac01bc3ecdd914273ef6bfaede87aaecd6541
     command: --save 60 1 --loglevel warning
     restart: unless-stopped
     healthcheck:
@@ -55,7 +55,7 @@ services:
       - redis:/data
 
   server:
-    image: ghcr.io/goauthentik/server:2026.8.2   # Renovate PRs bump this; see README
+    image: ghcr.io/goauthentik/server:2026.8.2@sha256:ff8489a5af4f4fe415ffd180a8e3c10b120bc2592d13d79dac050d977f7b9ecd   # Renovate PRs bump this; see README
     restart: unless-stopped
     command: server
     environment:
@@ -70,7 +70,7 @@ services:
         condition: service_healthy
 
   worker:
-    image: ghcr.io/goauthentik/server:2026.8.2   # Renovate PRs bump this; see README
+    image: ghcr.io/goauthentik/server:2026.8.2@sha256:ff8489a5af4f4fe415ffd180a8e3c10b120bc2592d13d79dac050d977f7b9ecd   # Renovate PRs bump this; see README
     restart: unless-stopped
     command: worker
     environment:
@@ -85,7 +85,7 @@ services:
         condition: service_healthy
 
   caddy:
-    image: caddy:2
+    image: caddy:2@sha256:504a44d7d74bd2bc28a66afc4774912fc21223ca8a67734af1c54ab2f999b489
     restart: unless-stopped
     ports:
       - "80:80"      # ACME HTTP-01 + redirect
