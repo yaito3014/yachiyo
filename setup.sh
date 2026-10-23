@@ -23,6 +23,18 @@ for v in ID_HOST; do
     [ -n "$val" ] || { echo "error: $v is not set in .env" >&2; exit 1; }
 done
 
+# Optional: space-separated hostnames, IPs or CIDRs whose X-Forwarded-*
+# headers Authentik should trust. Hostnames are resolved below, at render time
+# (re-run setup.sh and reload Caddy if one's IP changes). Empty means
+# private_ranges, which no internet client is in, so nothing outside this host
+# is trusted.
+ID_TRUSTED_PROXIES=${ID_TRUSTED_PROXIES:-private_ranges}
+case "$ID_TRUSTED_PROXIES" in
+    *[!0-9A-Za-z.:/_\ -]*)
+        echo "error: ID_TRUSTED_PROXIES must be space-separated hostnames, IPs or CIDRs" >&2; exit 1 ;;
+esac
+export ID_TRUSTED_PROXIES
+
 # Generate a persistent secret into .env if empty. Uses '|' as the sed delimiter
 # since base64 secrets contain '/' and '+' but never '|'.
 gen_secret() {
@@ -42,11 +54,32 @@ gen_secret() {
 
 mkdir -p caddy
 python3 - caddy/Caddyfile.tmpl caddy/Caddyfile <<'PYEOF'
-import os, sys
+import ipaddress, os, socket, sys
 tmpl, out = sys.argv[1], sys.argv[2]
+
+def trusted_proxies(value):
+    # Caddy's trusted_proxies takes only IPs/CIDRs, so resolve hostnames here.
+    ranges = []
+    for tok in value.split():
+        if tok == "private_ranges":
+            ranges.append(tok)
+            continue
+        try:
+            ranges.append(str(ipaddress.ip_network(tok, strict=False)))
+            continue
+        except ValueError:
+            pass
+        try:
+            ips = sorted({ai[4][0] for ai in socket.getaddrinfo(tok, None)})
+        except socket.gaierror as e:
+            sys.exit(f"error: cannot resolve {tok} in ID_TRUSTED_PROXIES: {e}")
+        print(f"resolved {tok} -> {' '.join(ips)}")
+        ranges += [str(ipaddress.ip_network(ip)) for ip in ips]
+    return " ".join(ranges)
+
 text = open(tmpl).read()
-for k in ["ID_HOST"]:
-    text = text.replace("{{%s}}" % k, os.environ.get(k, ""))
+text = text.replace("{{ID_HOST}}", os.environ.get("ID_HOST", ""))
+text = text.replace("{{ID_TRUSTED_PROXIES}}", trusted_proxies(os.environ["ID_TRUSTED_PROXIES"]))
 if "{{" in text:
     sys.exit(f"error: unrendered placeholder remains in {out}")
 open(out, "w").write(text)

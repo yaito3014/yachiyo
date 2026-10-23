@@ -3,5 +3,11 @@
     # TLS edge for Authentik. Authentik serves plain HTTP on :9000; Caddy
     # terminates TLS (Let's Encrypt) and forwards, setting X-Forwarded-* so
     # Authentik builds correct issuer URLs.
-    reverse_proxy server:9000
+    reverse_proxy server:9000 {
+        # Other hosts' Caddy instances doing forward auth against the embedded
+        # outpost (e.g. iroha's live site) send X-Forwarded-Host/Proto; trust
+        # them so the outpost can match the application. From ID_TRUSTED_PROXIES
+        # (hostnames resolved by setup.sh).
+        trusted_proxies {{ID_TRUSTED_PROXIES}}
+    }
 }
