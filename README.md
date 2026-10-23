@@ -56,11 +56,14 @@ Caddy, using `forward_auth https://<ID_HOST>` and
 - In Authentik, create a Proxy provider in forward-auth (single application)
   mode for the site's host, plus an application for it, and bind it to the
   embedded outpost.
-- Put the other host's public IP in `ID_TRUSTED_PROXIES` in `.env` (e.g.
-  `203.0.113.10/32`; space-separate several), then run `./setup.sh` and
-  `docker compose exec -w /etc/caddy caddy caddy reload`. Without this, this
-  Caddy replaces the `X-Forwarded-Host/Proto` headers that host sends, and the
-  outpost cannot tell which application the request is for.
+- Put the other host's hostname in `ID_TRUSTED_PROXIES` in `.env` (e.g.
+  `iroha.example.com`; space-separate several; IPs and CIDRs also work), then
+  run `./setup.sh` and `docker compose exec -w /etc/caddy caddy caddy reload`.
+  Without this, this Caddy replaces the `X-Forwarded-Host/Proto` headers that
+  host sends, and the outpost cannot tell which application the request is for.
+- Caddy only accepts IPs here, so setup.sh resolves the hostnames when it
+  renders. If that host's IP changes, run the same two commands again. The
+  nightly update never re-renders configs.
 
 ## Automated updates
 
