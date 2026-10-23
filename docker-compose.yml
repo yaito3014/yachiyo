@@ -55,7 +55,7 @@ services:
       - redis:/data
 
   server:
-    image: ghcr.io/goauthentik/server:2026.8.2@sha256:ff8489a5af4f4fe415ffd180a8e3c10b120bc2592d13d79dac050d977f7b9ecd   # Renovate PRs bump this; see README
+    image: ghcr.io/goauthentik/server:2026.8.5@sha256:602227a86455d6772e3d16b7d852713c4f864f40df5df894abd1285bb53979a5   # Renovate PRs bump this; see README
     restart: unless-stopped
     command: server
     environment:
@@ -70,7 +70,7 @@ services:
         condition: service_healthy
 
   worker:
-    image: ghcr.io/goauthentik/server:2026.8.2@sha256:ff8489a5af4f4fe415ffd180a8e3c10b120bc2592d13d79dac050d977f7b9ecd   # Renovate PRs bump this; see README
+    image: ghcr.io/goauthentik/server:2026.8.5@sha256:602227a86455d6772e3d16b7d852713c4f864f40df5df894abd1285bb53979a5   # Renovate PRs bump this; see README
     restart: unless-stopped
     command: worker
     environment:
