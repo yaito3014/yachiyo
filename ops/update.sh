@@ -34,7 +34,7 @@ while IFS= read -r line || [ -n "$line" ]; do
 done < .env
 
 # Pinned so the backup helper never pulls a moving tag; Renovate keeps it current.
-BACKUP_IMAGE=busybox:1.37@sha256:bdf57e528e45e4433820e045b29b4597825a1c9e38353532d90a01445013f82e
+BACKUP_IMAGE=busybox:1.38@sha256:fd7dc98638c8e305f4dc34e979f1c0fdfdcaeb0fbf8fcff77ae834b6da3d7e6e
 
 log() { echo "[${STACK:-update}] $*"; }
 
