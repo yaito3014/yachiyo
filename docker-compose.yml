@@ -42,7 +42,7 @@ services:
       POSTGRES_DB: ${PG_DB:-authentik}
 
   redis:
-    image: docker.io/library/redis:7-alpine@sha256:c5d34a98396a4775e223c74e929162c35c5a2182901ba26b50ade939941ce14b
+    image: docker.io/library/redis:7-alpine@sha256:7b1753b4c5ad8458906c272a8132b8c15f5557b000379eb115fb239706a384b7
     command: --save 60 1 --loglevel warning
     restart: unless-stopped
     healthcheck:
