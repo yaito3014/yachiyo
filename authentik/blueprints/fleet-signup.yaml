@@ -1,0 +1,280 @@
+# Self-service sign-up: email + password (confirmed by a verification email)
+# and GitHub. Authentik applies this itself (mounted at /blueprints/custom).
+#
+# New accounts can sign in to Authentik but use no app until an admin adds
+# them to the app's group (tailnet: Headscale, lore: Lore).
+version: 1
+metadata:
+  name: fleet-signup
+  labels:
+    blueprints.goauthentik.io/description: "Sign-up (email, GitHub), verified emails, app groups"
+entries:
+  # --- Verified email ------------------------------------------------------
+  # Apps trust email_verified (Headscale admits by email, Lore keys users on
+  # it). It is true only while the user's email is the address recorded in
+  # the verified_email attribute, which is set only by the verification email
+  # below, by GitHub for a verified primary address, or by an admin. Changing
+  # the email in user settings therefore makes it unverified.
+  - model: authentik_providers_oauth2.scopemapping
+    identifiers:
+      name: "fleet: email (verified)"
+    attrs:
+      scope_name: email
+      description: Email address (verified)
+      expression: |
+        email = request.user.email
+        verified = request.user.attributes.get("verified_email")
+        return {
+            "email": email,
+            "email_verified": bool(email) and verified == email,
+        }
+
+  # --- App access ----------------------------------------------------------
+  - model: authentik_core.group
+    id: group-tailnet
+    identifiers:
+      name: tailnet
+  - model: authentik_core.group
+    id: group-lore
+    identifiers:
+      name: lore
+  # Skipped while the app does not exist yet (e.g. on a new install).
+  - model: authentik_policies.policybinding
+    conditions:
+      - !Find [authentik_core.application, [slug, headscale]]
+    identifiers:
+      target: !Find [authentik_core.application, [slug, headscale]]
+      group: !KeyOf group-tailnet
+    attrs:
+      order: 0
+  - model: authentik_policies.policybinding
+    conditions:
+      - !Find [authentik_core.application, [slug, lore]]
+    identifiers:
+      target: !Find [authentik_core.application, [slug, lore]]
+      group: !KeyOf group-lore
+    attrs:
+      order: 0
+
+  # --- Sign-up with email and password -------------------------------------
+  - model: authentik_stages_prompt.prompt
+    id: prompt-username
+    identifiers:
+      name: fleet-signup-username
+    attrs:
+      field_key: username
+      label: Username
+      type: username
+      required: true
+      placeholder: Username
+      order: 0
+  - model: authentik_stages_prompt.prompt
+    id: prompt-email
+    identifiers:
+      name: fleet-signup-email
+    attrs:
+      field_key: email
+      label: Email
+      type: email
+      required: true
+      placeholder: Email
+      order: 1
+  - model: authentik_stages_prompt.prompt
+    id: prompt-password
+    identifiers:
+      name: fleet-signup-password
+    attrs:
+      field_key: password
+      label: Password
+      type: password
+      required: true
+      placeholder: Password
+      order: 2
+  - model: authentik_stages_prompt.prompt
+    id: prompt-password-repeat
+    identifiers:
+      name: fleet-signup-password-repeat
+    attrs:
+      field_key: password_repeat
+      label: Password (repeat)
+      type: password
+      required: true
+      placeholder: Password (repeat)
+      order: 3
+  - model: authentik_policies_password.passwordpolicy
+    id: password-policy
+    identifiers:
+      name: fleet-signup-password
+    attrs:
+      password_field: password
+      length_min: 12
+      amount_digits: 0
+      amount_lowercase: 0
+      amount_symbols: 0
+      amount_uppercase: 0
+      check_static_rules: true
+      check_have_i_been_pwned: false
+      check_zxcvbn: false
+      error_message: Use at least 12 characters.
+  - model: authentik_stages_prompt.promptstage
+    id: stage-prompt
+    identifiers:
+      name: fleet-signup-prompt
+    attrs:
+      fields:
+        - !KeyOf prompt-username
+        - !KeyOf prompt-email
+        - !KeyOf prompt-password
+        - !KeyOf prompt-password-repeat
+      validation_policies:
+        - !KeyOf password-policy
+  # The account exists but cannot sign in until the emailed link is opened.
+  - model: authentik_stages_user_write.userwritestage
+    id: stage-write
+    identifiers:
+      name: fleet-signup-write
+    attrs:
+      user_creation_mode: always_create
+      create_users_as_inactive: true
+  - model: authentik_stages_email.emailstage
+    id: stage-email
+    identifiers:
+      name: fleet-signup-verify-email
+    attrs:
+      use_global_settings: true
+      activate_user_on_success: true
+      subject: Confirm your email address
+      template: email/account_confirmation.html
+      token_expiry: minutes=30
+  # Runs once the emailed link was opened: records the address as verified.
+  - model: authentik_policies_expression.expressionpolicy
+    id: policy-mark-verified
+    identifiers:
+      name: fleet-signup-mark-verified
+    attrs:
+      expression: |
+        prompt = context["flow_plan"].context.get("prompt_data", {})
+        email = prompt.get("email")
+        if not email:
+            return False
+        prompt["attributes.verified_email"] = email
+        return True
+  - model: authentik_stages_user_write.userwritestage
+    id: stage-write-verified
+    identifiers:
+      name: fleet-signup-write-verified
+    attrs:
+      user_creation_mode: never_create
+  - model: authentik_stages_user_login.userloginstage
+    id: stage-login
+    identifiers:
+      name: fleet-signup-login
+  - model: authentik_flows.flow
+    id: flow-signup
+    identifiers:
+      slug: fleet-signup
+    attrs:
+      name: Sign up
+      title: Create your account
+      designation: enrollment
+      authentication: require_unauthenticated
+  - model: authentik_flows.flowstagebinding
+    identifiers:
+      target: !KeyOf flow-signup
+      order: 10
+    attrs:
+      stage: !KeyOf stage-prompt
+  - model: authentik_flows.flowstagebinding
+    identifiers:
+      target: !KeyOf flow-signup
+      order: 20
+    attrs:
+      stage: !KeyOf stage-write
+  - model: authentik_flows.flowstagebinding
+    identifiers:
+      target: !KeyOf flow-signup
+      order: 30
+    attrs:
+      stage: !KeyOf stage-email
+  - model: authentik_flows.flowstagebinding
+    id: binding-write-verified
+    identifiers:
+      target: !KeyOf flow-signup
+      order: 40
+    attrs:
+      stage: !KeyOf stage-write-verified
+      evaluate_on_plan: false
+      re_evaluate_policies: true
+  - model: authentik_policies.policybinding
+    identifiers:
+      target: !KeyOf binding-write-verified
+      policy: !KeyOf policy-mark-verified
+    attrs:
+      order: 0
+  - model: authentik_flows.flowstagebinding
+    identifiers:
+      target: !KeyOf flow-signup
+      order: 100
+    attrs:
+      stage: !KeyOf stage-login
+
+  # Link "Sign up" from the login page. Skipped until Authentik's default
+  # login flow exists. user_fields repeats Authentik's default: the stage is
+  # validated as a whole, and it needs either user fields or a source.
+  - model: authentik_stages_identification.identificationstage
+    conditions:
+      - !Find [authentik_stages_identification.identificationstage, [name, default-authentication-identification]]
+    identifiers:
+      name: default-authentication-identification
+    attrs:
+      user_fields: [email, username]
+      enrollment_flow: !KeyOf flow-signup
+
+  # --- Sign-up and sign-in with GitHub -------------------------------------
+  # Only once GITHUB_CLIENT_ID and GITHUB_CLIENT_SECRET are set (see README).
+  #
+  # Authentik's GitHub source takes the public or primary address without
+  # looking at GitHub's "verified" flag, so this mapping replaces it with the
+  # primary address only if GitHub verified it, and records it as verified.
+  - model: authentik_sources_oauth.oauthsourcepropertymapping
+    id: github-verified-email
+    identifiers:
+      name: "fleet: GitHub verified email"
+    attrs:
+      expression: |
+        for entry in client.get_github_emails(token):
+            if entry.get("primary") and entry.get("verified"):
+                address = entry.get("email")
+                return {"email": address, "attributes": {"verified_email": address}}
+        return {}
+  - model: authentik_sources_oauth.oauthsource
+    id: source-github
+    conditions:
+      - !Env [GITHUB_CLIENT_ID, ""]
+      - !Env [GITHUB_CLIENT_SECRET, ""]
+    identifiers:
+      slug: github
+    attrs:
+      name: GitHub
+      provider_type: github
+      consumer_key: !Env [GITHUB_CLIENT_ID, ""]
+      consumer_secret: !Env [GITHUB_CLIENT_SECRET, ""]
+      # A GitHub account is its own identity: it never takes over an existing
+      # Authentik user with the same email. Existing users link GitHub from
+      # their user settings instead.
+      user_matching_mode: identifier
+      authentication_flow: !Find [authentik_flows.flow, [slug, default-source-authentication]]
+      enrollment_flow: !Find [authentik_flows.flow, [slug, default-source-enrollment]]
+      user_property_mappings:
+        - !KeyOf github-verified-email
+  - model: authentik_stages_identification.identificationstage
+    conditions:
+      - !Find [authentik_stages_identification.identificationstage, [name, default-authentication-identification]]
+      - !Env [GITHUB_CLIENT_ID, ""]
+      - !Env [GITHUB_CLIENT_SECRET, ""]
+    identifiers:
+      name: default-authentication-identification
+    attrs:
+      user_fields: [email, username]
+      sources:
+        - !KeyOf source-github
