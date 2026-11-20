@@ -129,6 +129,8 @@ entries:
       validation_policies:
         - !KeyOf password-policy
   # The account exists but cannot sign in until the emailed link is opened.
+  # Internal: Authentik's own user interface (settings, MFA, linked accounts)
+  # refuses external users. It grants no app or admin access by itself.
   - model: authentik_stages_user_write.userwritestage
     id: stage-write
     identifiers:
@@ -136,6 +138,7 @@ entries:
     attrs:
       user_creation_mode: always_create
       create_users_as_inactive: true
+      user_type: internal
   - model: authentik_stages_email.emailstage
     id: stage-email
     identifiers:
@@ -247,6 +250,58 @@ entries:
                 address = entry.get("email")
                 return {"email": address, "attributes": {"verified_email": address}}
         return {}
+  # Sign-up through a source. Authentik's default-source-enrollment, except
+  # that it creates internal users (see fleet-signup-write); it reuses that
+  # flow's username prompt, sign-in stage and policies.
+  - model: authentik_stages_user_write.userwritestage
+    id: stage-source-write
+    identifiers:
+      name: fleet-source-signup-write
+    attrs:
+      user_creation_mode: always_create
+      user_type: internal
+  - model: authentik_flows.flow
+    id: flow-source-signup
+    identifiers:
+      slug: fleet-source-signup
+    attrs:
+      name: Sign up with an external account
+      title: Choose a username
+      designation: enrollment
+      authentication: none
+      denied_action: message_continue
+  - model: authentik_policies.policybinding
+    identifiers:
+      target: !KeyOf flow-source-signup
+      policy: !Find [authentik_policies_expression.expressionpolicy, [name, default-source-enrollment-if-sso]]
+    attrs:
+      order: 0
+  - model: authentik_flows.flowstagebinding
+    id: binding-source-prompt
+    identifiers:
+      target: !KeyOf flow-source-signup
+      order: 0
+    attrs:
+      stage: !Find [authentik_stages_prompt.promptstage, [name, default-source-enrollment-prompt]]
+  - model: authentik_policies.policybinding
+    identifiers:
+      target: !KeyOf binding-source-prompt
+      policy: !Find [authentik_policies_expression.expressionpolicy, [name, default-source-enrollment-if-username]]
+    attrs:
+      order: 0
+  - model: authentik_flows.flowstagebinding
+    identifiers:
+      target: !KeyOf flow-source-signup
+      order: 1
+    attrs:
+      stage: !KeyOf stage-source-write
+  - model: authentik_flows.flowstagebinding
+    identifiers:
+      target: !KeyOf flow-source-signup
+      order: 2
+    attrs:
+      stage: !Find [authentik_stages_user_login.userloginstage, [name, default-source-enrollment-login]]
+
   - model: authentik_sources_oauth.oauthsource
     id: source-github
     conditions:
@@ -268,7 +323,7 @@ entries:
       # Authentik's own system paths).
       user_path_template: users/%(slug)s
       authentication_flow: !Find [authentik_flows.flow, [slug, default-source-authentication]]
-      enrollment_flow: !Find [authentik_flows.flow, [slug, default-source-enrollment]]
+      enrollment_flow: !KeyOf flow-source-signup
       user_property_mappings:
         - !KeyOf github-verified-email
   - model: authentik_stages_identification.identificationstage
