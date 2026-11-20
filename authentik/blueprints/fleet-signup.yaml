@@ -263,6 +263,10 @@ entries:
       # Authentik user with the same email. Existing users link GitHub from
       # their user settings instead.
       user_matching_mode: identifier
+      # Accounts created by GitHub sign-up go under users/github in the admin
+      # UI (the default, goauthentik.io/sources/github, mixes them with
+      # Authentik's own system paths).
+      user_path_template: users/%(slug)s
       authentication_flow: !Find [authentik_flows.flow, [slug, default-source-authentication]]
       enrollment_flow: !Find [authentik_flows.flow, [slug, default-source-enrollment]]
       user_property_mappings:
