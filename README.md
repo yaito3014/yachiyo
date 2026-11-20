@@ -149,3 +149,18 @@ from that directory:
 - `AUTHENTIK_SECRET_KEY` and `PG_PASS` are generated once into `.env`; back them
   up (losing the secret key invalidates sessions/tokens). The Postgres volume
   holds all users and config — include it in backups.
+- A Postgres major upgrade (a Renovate `[manual-deploy]` bump) is a dump and
+  restore. Since 18 the image keeps each major version's data in its own
+  `/var/lib/postgresql/<major>/docker` inside the volume, so the new version
+  starts empty next to the old data, which stays there for rollback:
+
+      docker compose stop server worker
+      docker compose exec -T postgresql sh -c \
+          'pg_dump -Fc -U "$POSTGRES_USER" "$POSTGRES_DB"' > authentik.pgdump
+      git pull                        # the new Postgres version
+      docker compose up -d postgresql
+      docker compose exec -T postgresql sh -c \
+          'pg_restore --exit-on-error -U "$POSTGRES_USER" -d "$POSTGRES_DB"' < authentik.pgdump
+      docker compose up -d
+
+  Remove the old version's directory once the new one has run for a while.
