@@ -33,8 +33,11 @@ account.
 
 Fill the `AUTHENTIK_EMAIL__*` values in `.env` (host `smtp.resend.com`, port 587,
 username `resend`, password = the Resend API key, single-quoted), then
-`docker compose up -d` to apply. Add the SPF/DKIM/DMARC records Resend shows for
-your sending domain to DNS so mail is not marked as spam. Email features
+`docker compose up -d` to apply. `AUTHENTIK_EMAIL__FROM` must be an address on a
+domain that is verified in Resend and that the API key may send from; Resend
+rejects other senders ("This API key is not authorized to send emails from
+..."). Add the SPF/DKIM/DMARC records Resend shows for your
+sending domain to DNS so mail is not marked as spam. Email features
 (verification, password reset) stay inert until this is set.
 
 ## OIDC clients
@@ -43,9 +46,38 @@ Create an OIDC provider + application in Authentik for each: Headscale
 (confidential, code flow), the Lore CLI (public, device code flow), and the Lore
 web frontend (public, code + PKCE, redirect `https://<app host>/auth/callback`).
 Each application's issuer is `https://<ID_HOST>/application/o/<app-slug>/`.
-Ensure the `email` and `email_verified` claims are released (kaguya-auth keys
-identity on the verified email). Enable a registration flow with an email-
-verification stage and add GitHub as a federation source.
+Give each provider the scope mapping `fleet: email (verified)` (from
+[the sign-up blueprint](#sign-up)) for its `email` claim: kaguya-auth keys
+identity on the verified email, and Headscale admits users by it.
+
+## Sign-up
+
+`authentik/blueprints/fleet-signup.yaml` sets up self-service sign-up. Authentik
+applies it by itself (the directory is mounted at `/blueprints/custom`) and
+again whenever the file changes.
+
+- **Email + password:** "Sign up" on the login page. The account stays
+  inactive until the link in the verification email is opened, so it needs the
+  SMTP settings above.
+- **GitHub:** a "GitHub" button on the login page, once the OAuth app is set
+  (below). A GitHub login that matches no linked account creates a new one;
+  existing users link GitHub under User settings -> Connected services.
+- **Verified email.** `email_verified` is true only while a user's email equals
+  their `verified_email` attribute. The verification email sets it, GitHub
+  sets it for a primary address GitHub verified, and an admin can set it by
+  hand (for accounts created in the admin UI). Users cannot change their
+  email unless that is turned on in Authentik's system settings; if it is, a
+  changed email is unverified.
+- **No app access by default.** New accounts can sign in to Authentik only.
+  Add them to `tailnet` for Headscale (whose email allowlist still applies)
+  or `lore` for Lore; iroha's `live` needs `streamers`.
+
+GitHub OAuth app: at GitHub -> Settings -> Developer settings -> OAuth Apps ->
+New OAuth App, set the homepage to `https://<ID_HOST>` and the callback URL to
+`https://<ID_HOST>/source/oauth/callback/github/`, generate a client secret,
+put both in `.env` (`GITHUB_CLIENT_ID`, `GITHUB_CLIENT_SECRET`), then
+`docker compose up -d`. Remove them and run it again to turn GitHub off;
+the source is then left in place, so also disable it in the admin UI.
 
 ## Forward auth (embedded outpost)
 

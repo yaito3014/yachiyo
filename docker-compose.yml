@@ -23,6 +23,10 @@ x-authentik-env: &authentik-env
   AUTHENTIK_EMAIL__PASSWORD: ${AUTHENTIK_EMAIL__PASSWORD:-}
   AUTHENTIK_EMAIL__USE_TLS: ${AUTHENTIK_EMAIL__USE_TLS:-true}
   AUTHENTIK_EMAIL__FROM: ${AUTHENTIK_EMAIL__FROM:-}
+  # GitHub OAuth app for sign-up/sign-in with GitHub, read by
+  # authentik/blueprints/fleet-signup.yaml. Empty = no GitHub source.
+  GITHUB_CLIENT_ID: ${GITHUB_CLIENT_ID:-}
+  GITHUB_CLIENT_SECRET: ${GITHUB_CLIENT_SECRET:-}
 
 services:
   postgresql:
@@ -63,6 +67,7 @@ services:
     volumes:
       - media:/media
       - custom-templates:/templates
+      - ./authentik/blueprints:/blueprints/custom:ro   # applied by Authentik itself
     depends_on:
       postgresql:
         condition: service_healthy
@@ -78,6 +83,7 @@ services:
     volumes:
       - media:/media
       - custom-templates:/templates
+      - ./authentik/blueprints:/blueprints/custom:ro   # applied by Authentik itself
     depends_on:
       postgresql:
         condition: service_healthy
