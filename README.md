@@ -68,6 +68,9 @@ again whenever the file changes.
   hand (for accounts created in the admin UI). Users cannot change their
   email unless that is turned on in Authentik's system settings; if it is, a
   changed email is unverified.
+- **Internal users.** Sign-ups are created as internal users, because
+  Authentik's own user interface (settings, MFA, linked accounts) refuses
+  external ones. That grants no app or admin access by itself.
 - **No app access by default.** New accounts can sign in to Authentik only.
   Add them to `tailnet` for Headscale (whose email allowlist still applies)
   or `lore` for Lore; iroha's `live` needs `streamers`.
