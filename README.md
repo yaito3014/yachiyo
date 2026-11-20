@@ -33,8 +33,11 @@ account.
 
 Fill the `AUTHENTIK_EMAIL__*` values in `.env` (host `smtp.resend.com`, port 587,
 username `resend`, password = the Resend API key, single-quoted), then
-`docker compose up -d` to apply. Add the SPF/DKIM/DMARC records Resend shows for
-your sending domain to DNS so mail is not marked as spam. Email features
+`docker compose up -d` to apply. `AUTHENTIK_EMAIL__FROM` must be an address on a
+domain that is verified in Resend and that the API key may send from; Resend
+rejects other senders ("This API key is not authorized to send emails from
+..."). Add the SPF/DKIM/DMARC records Resend shows for your
+sending domain to DNS so mail is not marked as spam. Email features
 (verification, password reset) stay inert until this is set.
 
 ## OIDC clients
